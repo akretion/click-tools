@@ -19,22 +19,29 @@ def get_related_table(cr, table):
             AND ccu.table_schema = tc.table_schema
         WHERE constraint_type = 'FOREIGN KEY'
         AND ccu.table_name = %s and ccu.column_name = 'id'""", (table,))
-    return [x[0] for x in cr.fetchall()]
+    return cr.fetchall()
 
-def get_table_dependency(cr, table, tree, done):
+def get_table_dependency(cr, table, tree, done, stop=None):
     print("analyse table", table)
     done.append(table)
-    tree[table] = {}
-    for rel_table in get_related_table(cr, table):
+    tree[table] = []
+    if stop in done:
+        return
+    for rel_table, field in get_related_table(cr, table):
+        depend = {}
+        tree[table].append({"table": rel_table, "field": field, "tree": depend})
         if rel_table not in done:
-            get_table_dependency(cr, rel_table, tree[table], done)
+            get_table_dependency(cr, rel_table, depend, done, stop)
 
 @click.command()
 @click_odoo.env_options(default_log_level="error")
 def main(env):
+    # Table to analyse
     table = 'account_bank_statement'
+    # Stop script (to not wait tooo long) if following table is reach
+    stop = "res_company"
     table_dependency = {}
-    get_table_dependency(env.cr, table, table_dependency, [])
+    get_table_dependency(env.cr, table, table_dependency, [], stop)
     res = yaml.dump(table_dependency)
     with open("truncate_analyse.yaml", "w") as f:
         f.write(res)
